@@ -33,9 +33,35 @@ def find_upper_lower_bound(data_list):
     temp = sorted(data_list)
     q1, q3 = np.percentile(temp, [25, 75])
     iqr = q3 - q1
-    lower_bound = q1 - (1.5 * iqr)
-    upper_bound = q3 + (1.5 * iqr) 
+    #길이 보정, 만개도 안되는 샘플의 이상치는 보정이 필요함  
+    if len(temp) <= 10000:
+        lower_bound = q1 - (1.5 * iqr) - 1
+        upper_bound = q3 + (1.5 * iqr) + 1
+
+    else : 
+        lower_bound = q1 - (1.5 * iqr)
+        upper_bound = q3 + (1.5 * iqr)
+
+
     return lower_bound, upper_bound
+
+
+def find_same_name(a):
+    # 1단계: 각 이름이 등장한 횟수를 딕셔너리로 만듦
+    name_dict = {}
+    for name in a:                # 리스트 a에 있는 자료들을 차례로 반복
+        if name in name_dict:     # 이름이 name_dict에 있으면
+            name_dict[name] += 1  # 등장 횟수를 1 증가
+
+        else:                     # 새 이름이면
+            name_dict[name] = 1   # 등장 횟수를 1로 저장
+
+    # 2단계: 만들어진 딕셔너리에서 등장 횟수가 2 이하인 것을 결과에 추가
+    result = set()          # 결괏값을 저장할 빈 집합
+    for name in name_dict:  # 딕셔너리 name_dict에 있는 자료들을 차례로 반복
+        if name_dict[name] <= 2:
+            result.add(name)
+    return result     
 
 #쿼리문 파싱 결과 사이즈 
 args = []
@@ -130,13 +156,25 @@ lower_bound, upper_bound = find_upper_lower_bound(argslen)
 
 # 필터링된 결과를 기반으로 파라미터를 검사할 변수명 선정 
 pas_argsdict = {key: value for key, value in argsdict.items() if value > lower_bound and value < upper_bound}
+
 #필터링된 결과를 기반으로 길이만으로 의심할 변수명 선정(코드삽입으로 변수명이 길어진 것들)
+#변수명 2차필터-> 각 변수명이 나오는 횟수를 세야 함! 
 sus_argsdict = {key: value for key, value in argsdict.items() if value < lower_bound or value > upper_bound}
+suslist = []
+#변수명 나온 횟수 세고, 의심되는 변수명 찾기 
+suslist = find_same_name(args)
+#print(suslist)
+# 파싱되는 변수명이 길이도 의심스러움 + 횟수까지도 이상함 = 공격코드가 삽입되어 잘못파싱된 것 
+sus_argsdict = {key: value for key, value in sus_argsdict.items() if key in suslist }
 
 pas_args_keys = pas_argsdict.keys()
 sus_args_keys = sus_argsdict.keys()
 
 valuedict = {}
+vdict = {}
+
+
+cnt = 0
 
 for i in data:
     IP = data[i]["IP"]
@@ -165,18 +203,26 @@ for i in data:
             if ARGS.get(pas):
                 vlan = len(data[i]["ARGS"][pas][0])
                 valuedict.setdefault(pas, []).append(vlan)
+                v = data[i]["ARGS"][pas][0]
+                vdict.setdefault(pas, []).append(v)
 
 
-                        
+
+#print(vdict)
                     
 #같은 키값들끼리 비교 당하면 좋겠다. 
-
 for pas in pas_args_keys :
     lower_bound, upper_bound = find_upper_lower_bound(valuedict[pas])
+    #변수가 나온 횟수 세고, 의심되는 변수 찾기 
+    suslist = []
+    suslist = find_same_name(vdict[pas])
+    #print(suslist) 1641 결과 
     #변수길이가 이상한 변수들만 남김 
     valuedict[pas] = {item for item in valuedict[pas] if item < lower_bound or item > upper_bound}
+    vdict[pas] = {item for item in vdict[pas] if item in suslist}
 
 
+#print(vdict)
 
 #라벨링 
 for i in data:
@@ -197,20 +243,19 @@ for i in data:
         # 수상한 길이가 있는 변수들만 찾기 
         for pas in pas_args_keys:
             if ARGS.get(pas):
-                if len(ARGS[pas][0]) in valuedict[pas]:
+                if len(ARGS[pas][0]) in valuedict[pas] and ARGS[pas][0] in vdict[pas]:
                     resultlist2_1.append(printl)
             else :
                 pass
 
 
-
-
-print(resultlist1)
+#print(resultlist1)
 print(resultlist2_1)
 print(resultlist2_2)
-print(resultlist3)
-print(resultlist4)
-print(resultlist5)
+#print(resultlist3)
+#print(resultlist4)
+#print(resultlist5)
+
 
 #label[1] , Detecting Attack Code
 label[1] = { "Detecting Attack Code": resultlist1 }
@@ -224,7 +269,6 @@ label[4] = { "Detecting Webshell Signature": resultlist3 }
 label[5] = { "Detecting Blind SQL Injection": resultlist4 }
 #label[6], Detecting Inappropriate Method 
 label[6] = { "Detecting Inappropriate Method": resultlist5 }
-
 
 
 
